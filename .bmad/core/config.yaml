@@ -1,0 +1,9 @@
+# BMAD Core Configuration
+# Generated for Jeremy-Project-1-Claude
+
+user_name: "Jeremy"
+communication_language: "English"
+output_language: "English"
+artifacts_folder: "docs"
+install_docs: false
+bmad_folder: ".bmad"

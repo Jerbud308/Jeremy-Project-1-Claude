@@ -1,0 +1,16 @@
+# BMAD Method Module Configuration
+# Generated for Jeremy-Project-1-Claude
+
+project_name: "Jeremy Project 1"
+tech_docs: "{project-root}/docs/tech"
+output_folder: "{project-root}/docs"
+story_location: "{project-root}/docs/sprint-artifacts"
+is_game_dev: false
+
+# Core Configuration Values (inherited)
+user_name: "Jeremy"
+communication_language: "English"
+output_language: "English"
+artifacts_folder: "docs"
+install_docs: false
+bmad_folder: ".bmad"
