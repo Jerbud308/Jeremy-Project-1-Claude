@@ -46,19 +46,18 @@ class SupabaseService:
         # Generate UUID if not provided (or convert existing id to UUID)
         transaction_id = contract_data.get("id", str(uuid.uuid4()))
 
-        # Prepare transaction record
+        # Prepare transaction record (matching actual database schema)
         transaction_record = {
             "transaction_id": transaction_id,
-            "processed_at": contract_data.get("processed_at", datetime.utcnow().isoformat()),
+            # Note: created_at and updated_at have defaults, don't need to set them
             "compliance_status": contract_data["compliance_status"],
-            "processing_time_ms": contract_data["processing_time_ms"],
-            # Transaction data fields
-            "property_address": transaction_data.get("property_address"),
-            "buyer_name": transaction_data.get("buyer_name"),
-            "seller_name": transaction_data.get("seller_name"),
-            "purchase_price": transaction_data.get("purchase_price"),
+            # Transaction data fields (all required fields must be present)
+            "property_address": transaction_data.get("property_address", "Unknown"),
+            "buyer_name": transaction_data.get("buyer_name", "Unknown"),
+            "seller_name": transaction_data.get("seller_name", "Unknown"),
+            "purchase_price": transaction_data.get("purchase_price", 0),
             "earnest_money_amount": transaction_data.get("earnest_money_amount"),
-            "closing_date": transaction_data.get("closing_date"),
+            "closing_date": transaction_data.get("closing_date", datetime.utcnow().date().isoformat()),
             "inspection_deadline": transaction_data.get("inspection_deadline"),
             "financing_contingency_date": transaction_data.get("financing_contingency_date"),
             "appraisal_contingency_date": transaction_data.get("appraisal_contingency_date"),
@@ -101,10 +100,10 @@ class SupabaseService:
         Returns:
             List of contract dictionaries (using 'id' for compatibility with frontend)
         """
-        # Fetch transactions
+        # Fetch transactions (order by created_at, not processed_at)
         transactions_response = self.client.table("transactions") \
             .select("*") \
-            .order("processed_at", desc=True) \
+            .order("created_at", desc=True) \
             .limit(limit) \
             .execute()
 
@@ -116,10 +115,10 @@ class SupabaseService:
                 .eq("transaction_id", transaction["transaction_id"]) \
                 .execute()
 
-            # Restructure to match expected format (using 'id' for frontend compatibility)
+            # Restructure to match expected format (map database fields to frontend format)
             contract_result = {
                 "id": transaction["transaction_id"],  # Map transaction_id to id for frontend
-                "processed_at": transaction["processed_at"],
+                "processed_at": transaction["created_at"],  # Map created_at to processed_at for frontend
                 "transaction_data": {
                     "property_address": transaction.get("property_address"),
                     "buyer_name": transaction.get("buyer_name"),
@@ -140,7 +139,7 @@ class SupabaseService:
                     }
                     for flag in flags_response.data
                 ],
-                "processing_time_ms": transaction["processing_time_ms"],
+                "processing_time_ms": 0,  # Not stored in database, default to 0
             }
             contracts.append(contract_result)
 
@@ -174,7 +173,7 @@ class SupabaseService:
 
         return {
             "id": transaction["transaction_id"],
-            "processed_at": transaction["processed_at"],
+            "processed_at": transaction["created_at"],  # Map created_at to processed_at
             "transaction_data": {
                 "property_address": transaction.get("property_address"),
                 "buyer_name": transaction.get("buyer_name"),
@@ -195,7 +194,7 @@ class SupabaseService:
                 }
                 for flag in flags_response.data
             ],
-            "processing_time_ms": transaction["processing_time_ms"],
+            "processing_time_ms": 0,  # Not stored in database
         }
 
     def get_dashboard_stats(self) -> Dict[str, Any]:
