@@ -26,20 +26,20 @@ class ComplianceFlag(BaseModel):
 
 
 class TransactionData(BaseModel):
-    property_address: Optional[str]
-    buyer_name: Optional[str]
-    seller_name: Optional[str]
-    purchase_price: Optional[float]
-    earnest_money_amount: Optional[float]
-    closing_date: Optional[str]
-    inspection_deadline: Optional[str]
-    financing_contingency_date: Optional[str]
-    appraisal_contingency_date: Optional[str]
-    title_contingency_date: Optional[str]
-    listing_agent_name: Optional[str]
-    buyer_agent_name: Optional[str]
-    escrow_company: Optional[str]
-    title_company: Optional[str]
+    property_address: Optional[str] = None
+    buyer_name: Optional[str] = None
+    seller_name: Optional[str] = None
+    purchase_price: Optional[float] = None
+    earnest_money_amount: Optional[float] = None
+    closing_date: Optional[str] = None
+    inspection_deadline: Optional[str] = None
+    financing_contingency_date: Optional[str] = None
+    appraisal_contingency_date: Optional[str] = None
+    title_contingency_date: Optional[str] = None
+    listing_agent_name: Optional[str] = None
+    buyer_agent_name: Optional[str] = None
+    escrow_company: Optional[str] = None
+    title_company: Optional[str] = None
     extraction_confidence_score: float = 0.95
 
 
@@ -77,11 +77,16 @@ class MockDataService:
 
     def _load_test_cases(self):
         """Load test cases and convert to processed contract results."""
-        # Path to test cases
-        test_cases_path = Path(__file__).parent.parent.parent / "tests" / "test_cases.json"
+        # Check Docker mount location first, then development path
+        docker_path = Path("/app/test_cases.json")
+        dev_path = Path(__file__).parent.parent.parent / "tests" / "test_cases.json"
 
-        if not test_cases_path.exists():
-            print(f"Warning: test_cases.json not found at {test_cases_path}")
+        if docker_path.exists():
+            test_cases_path = docker_path
+        elif dev_path.exists():
+            test_cases_path = dev_path
+        else:
+            print(f"Warning: test_cases.json not found at {docker_path} or {dev_path}")
             self._generate_fallback_data()
             return
 

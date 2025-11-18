@@ -9,6 +9,7 @@ services:
     volumes:
       - ./backend:/app
       - ../tests/test_cases.json:/app/test_cases.json:ro
+    working_dir: /app
     environment:
       - PYTHONUNBUFFERED=1
     restart: unless-stopped
