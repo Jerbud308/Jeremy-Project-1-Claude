@@ -7,21 +7,27 @@ import {
   DollarSign,
   FileText,
   AlertCircle,
-  Building2
+  Building2,
+  Activity,
+  BarChart3
 } from 'lucide-react'
 import {
   PieChart,
   Pie,
   Cell,
-  BarChart,
-  Bar,
-  XAxis,
-  YAxis,
-  CartesianGrid,
-  Tooltip,
-  Legend,
-  ResponsiveContainer
+  ResponsiveContainer,
+  Tooltip as RechartsTooltip
 } from 'recharts'
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from './components/ui/card'
+import { Badge } from './components/ui/badge'
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from './components/ui/table'
 
 // ============================================================================
 // TYPES
@@ -87,31 +93,31 @@ async function fetchContracts(): Promise<ContractResult[]> {
 // COMPONENTS
 // ============================================================================
 
-function StatCard({ icon: Icon, title, value, subtitle, trend, colorClass }: any) {
+function StatCard({ icon: Icon, title, value, subtitle, trend, gradient }: any) {
   return (
-    <div className="stat-card">
-      <div className="card-body">
-        <div className="flex items-center justify-between">
+    <Card className="overflow-hidden border-none shadow-lg hover:shadow-xl transition-all duration-300">
+      <div className={`bg-gradient-to-br ${gradient} p-6 text-white`}>
+        <div className="flex items-start justify-between">
           <div className="flex-1">
-            <p className="text-sm font-medium text-gray-600">{title}</p>
-            <p className={`text-3xl font-bold mt-2 ${colorClass}`}>{value}</p>
+            <p className="text-sm font-medium opacity-90">{title}</p>
+            <p className="text-4xl font-bold mt-2">{value}</p>
             {subtitle && (
-              <p className="text-sm text-gray-500 mt-1">{subtitle}</p>
+              <p className="text-sm opacity-80 mt-1">{subtitle}</p>
             )}
           </div>
-          <div className={`p-3 rounded-full ${colorClass.replace('text-', 'bg-').replace('600', '100')}`}>
-            <Icon className={`w-8 h-8 ${colorClass}`} />
+          <div className="p-3 rounded-full bg-white/20 backdrop-blur-sm">
+            <Icon className="w-7 h-7" />
           </div>
         </div>
         {trend && (
           <div className="mt-4 flex items-center text-sm">
-            <TrendingUp className="w-4 h-4 text-green-500 mr-1" />
-            <span className="text-green-600 font-medium">{trend}</span>
-            <span className="text-gray-500 ml-1">vs last period</span>
+            <TrendingUp className="w-4 h-4 mr-1" />
+            <span className="font-medium">{trend}</span>
+            <span className="ml-1 opacity-80">vs last period</span>
           </div>
         )}
       </div>
-    </div>
+    </Card>
   )
 }
 
@@ -123,13 +129,16 @@ function ComplianceChart({ stats }: { stats: DashboardStats }) {
   ]
 
   return (
-    <div className="card">
-      <div className="card-header">
-        <h3 className="text-lg font-semibold text-gray-900">Compliance Status Distribution</h3>
-        <p className="text-sm text-gray-500 mt-1">Overall contract review outcomes</p>
-      </div>
-      <div className="card-body">
-        <ResponsiveContainer width="100%" height={300}>
+    <Card className="shadow-lg hover:shadow-xl transition-all duration-300">
+      <CardHeader>
+        <CardTitle className="flex items-center gap-2">
+          <BarChart3 className="w-5 h-5 text-primary" />
+          Compliance Distribution
+        </CardTitle>
+        <CardDescription>Overall contract review outcomes</CardDescription>
+      </CardHeader>
+      <CardContent>
+        <ResponsiveContainer width="100%" height={280}>
           <PieChart>
             <Pie
               data={data}
@@ -137,7 +146,7 @@ function ComplianceChart({ stats }: { stats: DashboardStats }) {
               cy="50%"
               labelLine={false}
               label={({ name, percent }) => `${name}: ${(percent * 100).toFixed(0)}%`}
-              outerRadius={100}
+              outerRadius={90}
               fill="#8884d8"
               dataKey="value"
             >
@@ -145,36 +154,36 @@ function ComplianceChart({ stats }: { stats: DashboardStats }) {
                 <Cell key={`cell-${index}`} fill={entry.color} />
               ))}
             </Pie>
-            <Tooltip />
+            <RechartsTooltip />
           </PieChart>
         </ResponsiveContainer>
         <div className="mt-6 grid grid-cols-3 gap-4">
-          <div className="text-center">
-            <div className="text-2xl font-bold text-green-600">{stats.pass_count}</div>
-            <div className="text-sm text-gray-600">Passed</div>
+          <div className="text-center p-3 rounded-lg bg-green-50">
+            <div className="text-3xl font-bold text-green-600">{stats.pass_count}</div>
+            <div className="text-sm text-green-700 font-medium mt-1">Passed</div>
           </div>
-          <div className="text-center">
-            <div className="text-2xl font-bold text-yellow-600">{stats.warning_count}</div>
-            <div className="text-sm text-gray-600">Warnings</div>
+          <div className="text-center p-3 rounded-lg bg-yellow-50">
+            <div className="text-3xl font-bold text-yellow-600">{stats.warning_count}</div>
+            <div className="text-sm text-yellow-700 font-medium mt-1">Warnings</div>
           </div>
-          <div className="text-center">
-            <div className="text-2xl font-bold text-red-600">{stats.fail_count}</div>
-            <div className="text-sm text-gray-600">Failed</div>
+          <div className="text-center p-3 rounded-lg bg-red-50">
+            <div className="text-3xl font-bold text-red-600">{stats.fail_count}</div>
+            <div className="text-sm text-red-700 font-medium mt-1">Failed</div>
           </div>
         </div>
-      </div>
-    </div>
+      </CardContent>
+    </Card>
   )
 }
 
 function ContractsTable({ contracts }: { contracts: ContractResult[] }) {
   const getStatusBadge = (status: string) => {
     const badges: any = {
-      PASS: <span className="badge-success">Pass</span>,
-      WARNING: <span className="badge-warning">Warning</span>,
-      FAIL: <span className="badge-error">Fail</span>
+      PASS: <Badge variant="success">Pass</Badge>,
+      WARNING: <Badge variant="warning">Warning</Badge>,
+      FAIL: <Badge variant="error">Fail</Badge>
     }
-    return badges[status] || <span className="badge">{status}</span>
+    return badges[status] || <Badge>{status}</Badge>
   }
 
   const formatCurrency = (amount?: number) => {
@@ -197,76 +206,63 @@ function ContractsTable({ contracts }: { contracts: ContractResult[] }) {
   }
 
   return (
-    <div className="card">
-      <div className="card-header">
+    <Card className="shadow-lg hover:shadow-xl transition-all duration-300">
+      <CardHeader>
         <div className="flex items-center justify-between">
           <div>
-            <h3 className="text-lg font-semibold text-gray-900">Recent Contracts</h3>
-            <p className="text-sm text-gray-500 mt-1">Latest processed purchase agreements</p>
+            <CardTitle className="flex items-center gap-2">
+              <FileText className="w-5 h-5 text-primary" />
+              Recent Contracts
+            </CardTitle>
+            <CardDescription>Latest processed purchase agreements</CardDescription>
           </div>
-          <button className="px-4 py-2 bg-primary-600 text-white rounded-lg text-sm font-medium hover:bg-primary-700 transition-colors">
+          <button className="px-4 py-2 bg-primary text-primary-foreground rounded-lg text-sm font-medium hover:bg-primary/90 transition-colors shadow-md">
             View All
           </button>
         </div>
-      </div>
-      <div className="overflow-x-auto">
-        <table className="w-full">
-          <thead className="bg-gray-50 border-b border-gray-200">
-            <tr>
-              <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                Contract ID
-              </th>
-              <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                Property
-              </th>
-              <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                Purchase Price
-              </th>
-              <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                Status
-              </th>
-              <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                Flags
-              </th>
-              <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                Processed
-              </th>
-            </tr>
-          </thead>
-          <tbody className="bg-white divide-y divide-gray-200">
+      </CardHeader>
+      <CardContent>
+        <Table>
+          <TableHeader>
+            <TableRow>
+              <TableHead className="font-semibold">Contract ID</TableHead>
+              <TableHead className="font-semibold">Property</TableHead>
+              <TableHead className="font-semibold">Purchase Price</TableHead>
+              <TableHead className="font-semibold">Status</TableHead>
+              <TableHead className="font-semibold">Flags</TableHead>
+              <TableHead className="font-semibold">Processed</TableHead>
+            </TableRow>
+          </TableHeader>
+          <TableBody>
             {contracts.map((contract) => (
-              <tr key={contract.id} className="hover:bg-gray-50 transition-colors">
-                <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">
-                  {contract.id}
-                </td>
-                <td className="px-6 py-4 text-sm text-gray-600 max-w-xs truncate">
+              <TableRow key={contract.id} className="hover:bg-muted/50">
+                <TableCell className="font-medium">{contract.id}</TableCell>
+                <TableCell className="max-w-xs truncate">
                   {contract.transaction_data.property_address || 'N/A'}
-                </td>
-                <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900 font-medium">
+                </TableCell>
+                <TableCell className="font-semibold">
                   {formatCurrency(contract.transaction_data.purchase_price)}
-                </td>
-                <td className="px-6 py-4 whitespace-nowrap">
-                  {getStatusBadge(contract.compliance_status)}
-                </td>
-                <td className="px-6 py-4 whitespace-nowrap text-sm">
+                </TableCell>
+                <TableCell>{getStatusBadge(contract.compliance_status)}</TableCell>
+                <TableCell>
                   {contract.compliance_flags.length > 0 ? (
-                    <div className="flex items-center">
-                      <AlertTriangle className="w-4 h-4 text-yellow-500 mr-1" />
-                      <span className="text-gray-900">{contract.compliance_flags.length}</span>
+                    <div className="flex items-center gap-1">
+                      <AlertTriangle className="w-4 h-4 text-yellow-500" />
+                      <span className="font-medium">{contract.compliance_flags.length}</span>
                     </div>
                   ) : (
-                    <span className="text-gray-400">None</span>
+                    <span className="text-muted-foreground">None</span>
                   )}
-                </td>
-                <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
+                </TableCell>
+                <TableCell className="text-muted-foreground">
                   {formatDate(contract.processed_at)}
-                </td>
-              </tr>
+                </TableCell>
+              </TableRow>
             ))}
-          </tbody>
-        </table>
-      </div>
-    </div>
+          </TableBody>
+        </Table>
+      </CardContent>
+    </Card>
   )
 }
 
@@ -276,42 +272,48 @@ function RiskSummary({ contracts }: { contracts: ContractResult[] }) {
   )
 
   return (
-    <div className="card">
-      <div className="card-header">
-        <h3 className="text-lg font-semibold text-gray-900">Risk Summary</h3>
-        <p className="text-sm text-gray-500 mt-1">Contracts requiring immediate attention</p>
-      </div>
-      <div className="card-body">
+    <Card className="shadow-lg hover:shadow-xl transition-all duration-300">
+      <CardHeader>
+        <CardTitle className="flex items-center gap-2">
+          <Activity className="w-5 h-5 text-primary" />
+          Risk Summary
+        </CardTitle>
+        <CardDescription>Contracts requiring immediate attention</CardDescription>
+      </CardHeader>
+      <CardContent>
         {criticalIssues.length === 0 ? (
           <div className="text-center py-8">
-            <CheckCircle2 className="w-12 h-12 text-green-500 mx-auto mb-3" />
-            <p className="text-lg font-medium text-gray-900">No Critical Issues</p>
-            <p className="text-sm text-gray-500 mt-1">All contracts are within acceptable parameters</p>
+            <div className="mx-auto w-16 h-16 rounded-full bg-green-100 flex items-center justify-center mb-4">
+              <CheckCircle2 className="w-10 h-10 text-green-600" />
+            </div>
+            <p className="text-lg font-semibold text-foreground">No Critical Issues</p>
+            <p className="text-sm text-muted-foreground mt-2">All contracts are within acceptable parameters</p>
           </div>
         ) : (
           <div className="space-y-3">
             {criticalIssues.slice(0, 5).map((contract) => (
-              <div key={contract.id} className="border border-red-200 rounded-lg p-4 bg-red-50">
+              <div key={contract.id} className="border-2 border-red-200 rounded-lg p-4 bg-red-50/50 hover:bg-red-50 transition-colors">
                 <div className="flex items-start justify-between">
                   <div className="flex-1">
-                    <div className="flex items-center">
-                      <AlertCircle className="w-5 h-5 text-red-600 mr-2" />
-                      <span className="font-medium text-gray-900">{contract.id}</span>
+                    <div className="flex items-center gap-2">
+                      <AlertCircle className="w-5 h-5 text-red-600" />
+                      <span className="font-semibold text-foreground">{contract.id}</span>
                     </div>
-                    <p className="text-sm text-gray-600 mt-1">
+                    <p className="text-sm text-muted-foreground mt-1">
                       {contract.transaction_data.property_address}
                     </p>
-                    <div className="mt-2 space-y-1">
+                    <div className="mt-3 space-y-2">
                       {contract.compliance_flags
                         .filter(f => f.severity === 'CRITICAL')
                         .map((flag, idx) => (
-                          <div key={idx} className="text-sm text-red-700">
-                            • {flag.description}
+                          <div key={idx} className="flex items-start gap-2">
+                            <div className="w-1.5 h-1.5 rounded-full bg-red-600 mt-1.5"></div>
+                            <span className="text-sm text-red-900">{flag.description}</span>
                           </div>
                         ))}
                     </div>
                   </div>
-                  <button className="ml-4 px-3 py-1 bg-red-600 text-white text-sm rounded hover:bg-red-700 transition-colors">
+                  <button className="ml-4 px-4 py-2 bg-red-600 text-white text-sm font-medium rounded-lg hover:bg-red-700 transition-colors shadow-md">
                     Review
                   </button>
                 </div>
@@ -319,8 +321,8 @@ function RiskSummary({ contracts }: { contracts: ContractResult[] }) {
             ))}
           </div>
         )}
-      </div>
-    </div>
+      </CardContent>
+    </Card>
   )
 }
 
@@ -354,17 +356,16 @@ function App() {
     }
 
     loadData()
-    // Refresh every 30 seconds
     const interval = setInterval(loadData, 30000)
     return () => clearInterval(interval)
   }, [])
 
   if (loading) {
     return (
-      <div className="min-h-screen flex items-center justify-center">
+      <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-blue-50 via-white to-purple-50">
         <div className="text-center">
-          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-primary-600 mx-auto"></div>
-          <p className="mt-4 text-gray-600">Loading dashboard...</p>
+          <div className="animate-spin rounded-full h-16 w-16 border-4 border-primary border-t-transparent mx-auto"></div>
+          <p className="mt-6 text-lg font-medium text-muted-foreground">Loading dashboard...</p>
         </div>
       </div>
     )
@@ -372,62 +373,71 @@ function App() {
 
   if (error || !stats) {
     return (
-      <div className="min-h-screen flex items-center justify-center">
-        <div className="text-center">
-          <AlertCircle className="w-12 h-12 text-red-500 mx-auto mb-3" />
-          <p className="text-lg font-medium text-gray-900">Connection Error</p>
-          <p className="text-sm text-gray-600 mt-2">{error}</p>
-          <button
-            onClick={() => window.location.reload()}
-            className="mt-4 px-4 py-2 bg-primary-600 text-white rounded-lg hover:bg-primary-700"
-          >
-            Retry
-          </button>
-        </div>
+      <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-red-50 via-white to-orange-50">
+        <Card className="max-w-md shadow-2xl">
+          <CardContent className="pt-6 text-center">
+            <div className="mx-auto w-16 h-16 rounded-full bg-red-100 flex items-center justify-center mb-4">
+              <AlertCircle className="w-10 h-10 text-red-600" />
+            </div>
+            <h3 className="text-xl font-semibold text-foreground mb-2">Connection Error</h3>
+            <p className="text-sm text-muted-foreground mb-6">{error}</p>
+            <button
+              onClick={() => window.location.reload()}
+              className="px-6 py-3 bg-primary text-primary-foreground rounded-lg hover:bg-primary/90 font-medium shadow-lg"
+            >
+              Retry Connection
+            </button>
+          </CardContent>
+        </Card>
       </div>
     )
   }
 
   return (
-    <div className="min-h-screen bg-gray-50">
+    <div className="min-h-screen bg-gradient-to-br from-blue-50 via-white to-purple-50">
       {/* Header */}
-      <header className="bg-white border-b border-gray-200">
+      <header className="bg-white/80 backdrop-blur-sm border-b border-border shadow-sm sticky top-0 z-50">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6">
           <div className="flex items-center justify-between">
-            <div className="flex items-center">
-              <Building2 className="w-10 h-10 text-primary-600 mr-3" />
+            <div className="flex items-center gap-4">
+              <div className="p-3 rounded-xl bg-gradient-to-br from-blue-600 to-purple-600 shadow-lg">
+                <Building2 className="w-8 h-8 text-white" />
+              </div>
               <div>
-                <h1 className="text-3xl font-bold text-gray-900">
+                <h1 className="text-3xl font-bold bg-gradient-to-r from-blue-600 to-purple-600 bg-clip-text text-transparent">
                   Contract Compliance Dashboard
                 </h1>
-                <p className="text-sm text-gray-500 mt-1">
-                  Executive Board Review | Real-time AI-Powered Analysis
+                <p className="text-sm text-muted-foreground mt-1">
+                  Executive Board Review • Real-time AI-Powered Analysis
                 </p>
               </div>
             </div>
-            <div className="flex items-center space-x-3">
+            <div className="flex items-center gap-3">
               <div className="text-right">
-                <p className="text-sm text-gray-500">Last Updated</p>
-                <p className="text-sm font-medium text-gray-900">
+                <p className="text-xs text-muted-foreground">Last Updated</p>
+                <p className="text-sm font-semibold text-foreground">
                   {new Date().toLocaleTimeString()}
                 </p>
               </div>
-              <div className="w-2 h-2 bg-green-500 rounded-full animate-pulse"></div>
+              <div className="relative flex h-3 w-3">
+                <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-green-400 opacity-75"></span>
+                <span className="relative inline-flex rounded-full h-3 w-3 bg-green-500"></span>
+              </div>
             </div>
           </div>
         </div>
       </header>
 
       {/* Main Content */}
-      <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+      <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8 space-y-8">
         {/* KPI Cards */}
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-8">
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
           <StatCard
             icon={FileText}
             title="Total Contracts"
             value={stats.total_contracts}
             subtitle="Processed to date"
-            colorClass="text-primary-600"
+            gradient="from-blue-600 to-blue-700"
           />
           <StatCard
             icon={CheckCircle2}
@@ -435,26 +445,26 @@ function App() {
             value={`${stats.pass_rate}%`}
             subtitle={`${stats.pass_count} of ${stats.total_contracts} passed`}
             trend="+5.2%"
-            colorClass="text-green-600"
+            gradient="from-green-600 to-emerald-700"
           />
           <StatCard
             icon={DollarSign}
             title="Total Value"
             value={`$${(stats.total_transaction_value / 1000000).toFixed(1)}M`}
             subtitle="Transaction volume"
-            colorClass="text-blue-600"
+            gradient="from-purple-600 to-indigo-700"
           />
           <StatCard
             icon={Clock}
             title="Avg Processing"
             value={`${(stats.avg_processing_time_ms / 1000).toFixed(1)}s`}
             subtitle="Per contract"
-            colorClass="text-purple-600"
+            gradient="from-orange-600 to-red-700"
           />
         </div>
 
         {/* Charts and Risk Summary */}
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-8">
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
           <ComplianceChart stats={stats} />
           <RiskSummary contracts={contracts} />
         </div>
@@ -463,30 +473,36 @@ function App() {
         <ContractsTable contracts={contracts} />
 
         {/* Footer Stats */}
-        <div className="mt-8 grid grid-cols-1 md:grid-cols-3 gap-6">
-          <div className="card">
-            <div className="card-body text-center">
-              <AlertTriangle className="w-8 h-8 text-red-500 mx-auto mb-2" />
-              <div className="text-2xl font-bold text-gray-900">{stats.critical_flags_count}</div>
-              <div className="text-sm text-gray-600">Critical Flags</div>
-            </div>
-          </div>
-          <div className="card">
-            <div className="card-body text-center">
-              <AlertCircle className="w-8 h-8 text-yellow-500 mx-auto mb-2" />
-              <div className="text-2xl font-bold text-gray-900">{stats.warning_flags_count}</div>
-              <div className="text-sm text-gray-600">Warning Flags</div>
-            </div>
-          </div>
-          <div className="card">
-            <div className="card-body text-center">
-              <TrendingUp className="w-8 h-8 text-green-500 mx-auto mb-2" />
-              <div className="text-2xl font-bold text-gray-900">
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+          <Card className="text-center shadow-lg hover:shadow-xl transition-all duration-300 bg-gradient-to-br from-red-50 to-white border-red-100">
+            <CardContent className="pt-6">
+              <div className="mx-auto w-14 h-14 rounded-full bg-red-100 flex items-center justify-center mb-3">
+                <AlertTriangle className="w-7 h-7 text-red-600" />
+              </div>
+              <div className="text-4xl font-bold text-red-600">{stats.critical_flags_count}</div>
+              <div className="text-sm font-medium text-red-700 mt-2">Critical Flags</div>
+            </CardContent>
+          </Card>
+          <Card className="text-center shadow-lg hover:shadow-xl transition-all duration-300 bg-gradient-to-br from-yellow-50 to-white border-yellow-100">
+            <CardContent className="pt-6">
+              <div className="mx-auto w-14 h-14 rounded-full bg-yellow-100 flex items-center justify-center mb-3">
+                <AlertCircle className="w-7 h-7 text-yellow-600" />
+              </div>
+              <div className="text-4xl font-bold text-yellow-600">{stats.warning_flags_count}</div>
+              <div className="text-sm font-medium text-yellow-700 mt-2">Warning Flags</div>
+            </CardContent>
+          </Card>
+          <Card className="text-center shadow-lg hover:shadow-xl transition-all duration-300 bg-gradient-to-br from-green-50 to-white border-green-100">
+            <CardContent className="pt-6">
+              <div className="mx-auto w-14 h-14 rounded-full bg-green-100 flex items-center justify-center mb-3">
+                <TrendingUp className="w-7 h-7 text-green-600" />
+              </div>
+              <div className="text-4xl font-bold text-green-600">
                 {((stats.pass_count / stats.total_contracts) * 100).toFixed(0)}%
               </div>
-              <div className="text-sm text-gray-600">Compliance Rate</div>
-            </div>
-          </div>
+              <div className="text-sm font-medium text-green-700 mt-2">Compliance Rate</div>
+            </CardContent>
+          </Card>
         </div>
       </main>
     </div>
