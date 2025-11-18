@@ -1,0 +1,36 @@
+version: '3.8'
+
+services:
+  backend:
+    build: ./backend
+    container_name: compliance-dashboard-backend
+    ports:
+      - "8000:8000"
+    volumes:
+      - ./backend:/app
+      - ../tests/test_cases.json:/app/test_cases.json:ro
+    environment:
+      - PYTHONUNBUFFERED=1
+    restart: unless-stopped
+    networks:
+      - dashboard-network
+
+  frontend:
+    build: ./frontend
+    container_name: compliance-dashboard-frontend
+    ports:
+      - "3000:3000"
+    volumes:
+      - ./frontend:/app
+      - /app/node_modules
+    environment:
+      - VITE_API_URL=http://localhost:8000
+    depends_on:
+      - backend
+    restart: unless-stopped
+    networks:
+      - dashboard-network
+
+networks:
+  dashboard-network:
+    driver: bridge
