@@ -12,6 +12,7 @@ Date: November 2025
 
 import json
 import os
+import re
 from datetime import datetime, date
 from typing import Optional, List, Dict, Any
 from decimal import Decimal
@@ -46,12 +47,14 @@ class TransactionData(BaseModel):
     escrow_company: Optional[str] = None
     title_company: Optional[str] = None
     extraction_confidence_score: float = Field(default=0.0, ge=0.0, le=1.0)
+    tc_status: str = Field(default="PENDING_REVIEW", description="Transaction coordinator status")
+    tc_user_id: Optional[str] = Field(None, description="TC user ID assigned by n8n")
 
 
 class ComplianceFlag(BaseModel):
     """Individual compliance check result."""
 
-    check_id: str = Field(..., description="Compliance check identifier (e.g., CC-001)")
+    check_id: str = Field(..., description="Compliance check identifier (CC-001 through CC-008)")
     severity: str = Field(..., description="CRITICAL or WARNING")
     description: str = Field(..., description="Human-readable issue description")
     justification: str = Field(..., description="Claude's reasoning with contract citations")
@@ -63,10 +66,20 @@ class ComplianceFlag(BaseModel):
             raise ValueError('Severity must be CRITICAL or WARNING')
         return v
 
+    @field_validator('check_id')
+    @classmethod
+    def validate_check_id(cls, v: str) -> str:
+        valid_ids = ['CC-001', 'CC-002', 'CC-003', 'CC-005', 'CC-007', 'CC-008']
+        if v not in valid_ids:
+            raise ValueError(f'Check ID must be one of {valid_ids}')
+        return v
+
 
 class ComplianceResult(BaseModel):
     """Final output structure combining extraction and validation."""
 
+    document_type: str = Field(..., description="PURCHASE_AGREEMENT, ADDENDUM, DISCLOSURE, or OTHER")
+    is_purchase_agreement: bool = Field(..., description="True if document is main Purchase Agreement")
     transaction_data: TransactionData
     compliance_status: str = Field(..., description="PASS, WARNING, or FAIL")
     compliance_flags: List[ComplianceFlag] = Field(default_factory=list)
@@ -76,6 +89,14 @@ class ComplianceResult(BaseModel):
     def validate_status(cls, v: str) -> str:
         if v not in ['PASS', 'WARNING', 'FAIL']:
             raise ValueError('Status must be PASS, WARNING, or FAIL')
+        return v
+
+    @field_validator('document_type')
+    @classmethod
+    def validate_document_type(cls, v: str) -> str:
+        valid_types = ['PURCHASE_AGREEMENT', 'ADDENDUM', 'DISCLOSURE', 'OTHER']
+        if v not in valid_types:
+            raise ValueError(f'Document type must be one of {valid_types}')
         return v
 
 
@@ -129,31 +150,46 @@ class ClaudeComplianceAgent:
             contract_text: Raw text content of the real estate contract
 
         Returns:
-            Dictionary containing transaction_data, compliance_status, and compliance_flags
-            Or error dict if processing fails
+            Dictionary containing document_type, is_purchase_agreement, transaction_data,
+            compliance_status, and compliance_flags. Or error dict if processing fails
         """
         try:
             logger.info("Starting contract processing", text_length=len(contract_text))
 
-            # Step 1: Extract structured data
-            transaction_data = self._extract_data(contract_text)
-            logger.info("Data extraction complete", confidence=transaction_data.extraction_confidence_score)
+            # Step 1: Classify document and extract structured data
+            classification_result = self._extract_data(contract_text)
+            document_type = classification_result['document_type']
+            is_purchase_agreement = classification_result['is_purchase_agreement']
+            transaction_data = classification_result['transaction_data']
 
-            # Step 2: Validate compliance
-            compliance_flags = self._validate_compliance(transaction_data, contract_text)
-            logger.info("Compliance validation complete", flags_count=len(compliance_flags))
+            logger.info("Data extraction complete",
+                       document_type=document_type,
+                       is_purchase_agreement=is_purchase_agreement,
+                       confidence=transaction_data.extraction_confidence_score)
+
+            # Step 2: Validate compliance (only for Purchase Agreements)
+            if is_purchase_agreement:
+                compliance_flags = self._validate_compliance(transaction_data, contract_text)
+                logger.info("Compliance validation complete", flags_count=len(compliance_flags))
+            else:
+                compliance_flags = []
+                logger.info("Skipping compliance validation - not a Purchase Agreement")
 
             # Determine overall compliance status
             compliance_status = self._determine_status(compliance_flags)
 
             # Build final result
             result = ComplianceResult(
+                document_type=document_type,
+                is_purchase_agreement=is_purchase_agreement,
                 transaction_data=transaction_data,
                 compliance_status=compliance_status,
                 compliance_flags=compliance_flags
             )
 
-            logger.info("Contract processing complete", status=compliance_status)
+            logger.info("Contract processing complete",
+                       document_type=document_type,
+                       status=compliance_status)
             return result.model_dump()
 
         except Exception as e:
@@ -163,11 +199,14 @@ class ClaudeComplianceAgent:
                 error_message=str(e)
             ).model_dump()
 
-    def _extract_data(self, contract_text: str) -> TransactionData:
+    def _extract_data(self, contract_text: str) -> Dict[str, Any]:
         """
-        Step 1: Extract structured data using Claude with JSON schema.
+        Step 1: Classify document and extract structured data using Claude with JSON schema.
 
         Uses Claude's tool calling / structured output to ensure valid JSON.
+
+        Returns:
+            Dict containing document_type, is_purchase_agreement, and transaction_data
         """
         extraction_prompt = self._build_extraction_prompt(contract_text)
 
@@ -188,8 +227,19 @@ class ClaudeComplianceAgent:
             response_text = response.content[0].text
             extracted_data = json.loads(response_text)
 
-            # Validate using Pydantic
-            return TransactionData(**extracted_data)
+            # Validate document_type
+            document_type = extracted_data.get('document_type', 'OTHER')
+            is_purchase_agreement = (document_type == 'PURCHASE_AGREEMENT')
+
+            # Extract transaction_data
+            transaction_data_dict = extracted_data.get('transaction_data', {})
+            transaction_data = TransactionData(**transaction_data_dict)
+
+            return {
+                'document_type': document_type,
+                'is_purchase_agreement': is_purchase_agreement,
+                'transaction_data': transaction_data
+            }
 
         except json.JSONDecodeError as e:
             logger.error("Failed to parse Claude JSON response", error=str(e))
@@ -208,6 +258,7 @@ class ClaudeComplianceAgent:
         - CC-003: Closing date is in the future
         - CC-005: All contingency dates before closing
         - CC-007: No conflicting date sequences
+        - CC-008: Lead-Based Paint Disclosure for pre-1978 properties
         """
         flags = []
 
@@ -284,6 +335,11 @@ class ClaudeComplianceAgent:
         date_sequence_issues = self._check_date_sequences(data)
         flags.extend(date_sequence_issues)
 
+        # CC-008: Lead-Based Paint Disclosure check
+        lbp_flag = self._check_lead_based_paint_disclosure(contract_text)
+        if lbp_flag:
+            flags.append(lbp_flag)
+
         return flags
 
     def _check_date_sequences(self, data: TransactionData) -> List[ComplianceFlag]:
@@ -331,6 +387,68 @@ class ClaudeComplianceAgent:
 
         return flags
 
+    def _check_lead_based_paint_disclosure(self, contract_text: str) -> Optional[ComplianceFlag]:
+        """
+        Check for Lead-Based Paint Disclosure compliance (CC-008).
+
+        Rule: If the contract mentions the property was built before 1978,
+        check for a clear reference to the "Lead-Based Paint Disclosure" form
+        being included or waived.
+
+        Returns:
+            ComplianceFlag if violation found, None otherwise
+        """
+        contract_lower = contract_text.lower()
+
+        # Check if contract mentions pre-1978 construction
+        pre_1978_indicators = [
+            'built before 1978',
+            'constructed before 1978',
+            'built prior to 1978',
+            'constructed prior to 1978',
+            'pre-1978',
+            'pre 1978'
+        ]
+
+        # Also check for specific years before 1978
+        mentions_pre_1978 = any(indicator in contract_lower for indicator in pre_1978_indicators)
+
+        # Check for year mentions
+        year_pattern = r'\b(19[0-6]\d|197[0-7])\b'
+        year_matches = re.findall(year_pattern, contract_text)
+        if year_matches:
+            mentions_pre_1978 = True
+
+        if not mentions_pre_1978:
+            # No pre-1978 mention, so CC-008 doesn't apply
+            return None
+
+        # Property is pre-1978, now check for LBP disclosure
+        lbp_disclosure_indicators = [
+            'lead-based paint',
+            'lead based paint',
+            'lead paint',
+            'lbp disclosure',
+            'lead disclosure',
+            'lead hazard',
+            'lead-based paint disclosure'
+        ]
+
+        has_lbp_disclosure = any(indicator in contract_lower for indicator in lbp_disclosure_indicators)
+
+        if not has_lbp_disclosure:
+            return ComplianceFlag(
+                check_id="CC-008",
+                severity="CRITICAL",
+                description="Pre-1978 property missing Lead-Based Paint Disclosure",
+                justification=("Contract mentions property was built before 1978 but does not "
+                             "reference the required Lead-Based Paint Disclosure form or waiver. "
+                             "Federal law requires LBP disclosure for all residential properties "
+                             "built before 1978.")
+            )
+
+        return None
+
     def _determine_status(self, flags: List[ComplianceFlag]) -> str:
         """
         Determine overall compliance status based on flags.
@@ -350,38 +468,46 @@ class ClaudeComplianceAgent:
         """
         Build the extraction prompt for Claude.
 
-        This prompt instructs Claude to act as a Senior Real Estate Transaction
-        Coordinator and extract structured data according to the schema.
+        This prompt instructs Claude to first classify the document type,
+        then extract structured data according to the schema.
         """
         schema_json = {
-            "property_address": "string (full address with city, state, zip)",
-            "buyer_name": "string (comma-separated if multiple)",
-            "seller_name": "string (comma-separated if multiple)",
-            "purchase_price": "number (raw value, no formatting)",
-            "earnest_money_amount": "number",
-            "closing_date": "date (YYYY-MM-DD)",
-            "inspection_deadline": "date (YYYY-MM-DD)",
-            "financing_contingency_date": "date (YYYY-MM-DD)",
-            "appraisal_contingency_date": "date (YYYY-MM-DD)",
-            "title_contingency_date": "date (YYYY-MM-DD)",
-            "listing_agent_name": "string",
-            "buyer_agent_name": "string",
-            "escrow_company": "string",
-            "title_company": "string",
-            "extraction_confidence_score": "number (0.0 to 1.0)"
+            "document_type": "string (PURCHASE_AGREEMENT, ADDENDUM, DISCLOSURE, or OTHER)",
+            "transaction_data": {
+                "property_address": "string (full address with city, state, zip) or null",
+                "buyer_name": "string (comma-separated if multiple) or null",
+                "seller_name": "string (comma-separated if multiple) or null",
+                "purchase_price": "number (raw value, no formatting) or null",
+                "earnest_money_amount": "number or null",
+                "closing_date": "date (YYYY-MM-DD) or null",
+                "inspection_deadline": "date (YYYY-MM-DD) or null",
+                "financing_contingency_date": "date (YYYY-MM-DD) or null",
+                "appraisal_contingency_date": "date (YYYY-MM-DD) or null",
+                "title_contingency_date": "date (YYYY-MM-DD) or null",
+                "listing_agent_name": "string or null",
+                "buyer_agent_name": "string or null",
+                "escrow_company": "string or null",
+                "title_company": "string or null",
+                "extraction_confidence_score": "number (0.0 to 1.0)",
+                "tc_status": "string (default: PENDING_REVIEW)",
+                "tc_user_id": "string or null"
+            }
         }
 
-        prompt = f"""You are a Senior Real Estate Transaction Coordinator Data Analyst with 15+ years of experience processing purchase agreements.
+        # New system prompt (exactly 500 characters)
+        system_prompt = """You are a Senior Real Estate Transaction Coordinator Data Analyst. Your task is to process the provided raw text. 1. CLASSIFY: First, determine the document's type. 2. EXTRACT: If it IS a Purchase Agreement, extract all required data fields into the transaction_data object. 3. VALIDATE: Apply all compliance rules (CC-001, CC-002, CC-003, CC-005, CC-007, CC-008). 4. OUTPUT: Return a single JSON object with the classification, extracted data, and compliance flags."""
 
-Your task is to extract structured data from the following real estate purchase agreement contract and return it as valid JSON.
+        prompt = f"""{system_prompt}
 
 CRITICAL INSTRUCTIONS:
-1. Extract ONLY information that is explicitly stated in the contract
-2. Use null or empty string ("") for any field that cannot be found - DO NOT HALLUCINATE or guess
-3. For dates, use YYYY-MM-DD format
-4. For prices/amounts, use raw numeric values (no currency symbols or formatting)
-5. Provide an extraction_confidence_score (0.0 to 1.0) based on how clearly the information was stated in the contract
-6. Return ONLY valid JSON matching the schema below - no additional text or explanation
+1. First determine document_type: PURCHASE_AGREEMENT, ADDENDUM, DISCLOSURE, or OTHER
+2. If document_type is PURCHASE_AGREEMENT, extract all transaction_data fields
+3. If NOT a Purchase Agreement, still return the structure but transaction_data fields can be null
+4. Extract ONLY information explicitly stated - DO NOT HALLUCINATE or guess
+5. For dates, use YYYY-MM-DD format
+6. For prices/amounts, use raw numeric values (no currency symbols)
+7. Set extraction_confidence_score (0.0 to 1.0) based on clarity
+8. Return ONLY valid JSON matching the schema - no additional text
 
 REQUIRED JSON SCHEMA:
 {json.dumps(schema_json, indent=2)}
@@ -389,7 +515,7 @@ REQUIRED JSON SCHEMA:
 CONTRACT TEXT:
 {contract_text}
 
-Extract the data now and return ONLY the JSON object:"""
+Classify the document and extract data now. Return ONLY the JSON object:"""
 
         return prompt
 
