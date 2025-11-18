@@ -1,8 +1,10 @@
 """
 Supabase Service for Contract Compliance Dashboard
 Handles all database operations for storing and retrieving contract data.
+Compatible with existing transactions and compliance_flags schema.
 """
 import os
+import uuid
 from typing import List, Optional, Dict, Any
 from datetime import datetime
 from supabase import create_client, Client
@@ -29,21 +31,24 @@ class SupabaseService:
 
     def insert_contract(self, contract_data: Dict[str, Any]) -> Dict[str, Any]:
         """
-        Insert a new contract with its compliance flags.
+        Insert a new transaction with its compliance flags.
 
         Args:
             contract_data: Dictionary containing contract and compliance data
 
         Returns:
-            The inserted contract data
+            The inserted transaction data
         """
         # Extract compliance flags
         compliance_flags = contract_data.pop("compliance_flags", [])
         transaction_data = contract_data.pop("transaction_data", {})
 
-        # Prepare contract record
-        contract_record = {
-            "id": contract_data["id"],
+        # Generate UUID if not provided (or convert existing id to UUID)
+        transaction_id = contract_data.get("id", str(uuid.uuid4()))
+
+        # Prepare transaction record
+        transaction_record = {
+            "transaction_id": transaction_id,
             "processed_at": contract_data.get("processed_at", datetime.utcnow().isoformat()),
             "compliance_status": contract_data["compliance_status"],
             "processing_time_ms": contract_data["processing_time_ms"],
@@ -63,16 +68,18 @@ class SupabaseService:
             "escrow_company": transaction_data.get("escrow_company"),
             "title_company": transaction_data.get("title_company"),
             "extraction_confidence_score": transaction_data.get("extraction_confidence_score", 0.0),
+            # Add required tc_status field
+            "tc_status": transaction_data.get("tc_status", "PENDING_REVIEW"),
         }
 
-        # Insert contract
-        result = self.client.table("contracts").insert(contract_record).execute()
+        # Insert transaction
+        result = self.client.table("transactions").insert(transaction_record).execute()
 
         # Insert compliance flags
         if compliance_flags:
             flags_to_insert = [
                 {
-                    "contract_id": contract_data["id"],
+                    "transaction_id": transaction_id,
                     "check_id": flag["check_id"],
                     "severity": flag["severity"],
                     "description": flag["description"],
@@ -86,43 +93,44 @@ class SupabaseService:
 
     def get_all_contracts(self, limit: int = 100) -> List[Dict[str, Any]]:
         """
-        Get all contracts with their compliance flags.
+        Get all transactions with their compliance flags.
 
         Args:
-            limit: Maximum number of contracts to return
+            limit: Maximum number of transactions to return
 
         Returns:
-            List of contract dictionaries
+            List of contract dictionaries (using 'id' for compatibility with frontend)
         """
-        # Fetch contracts
-        contracts_response = self.client.table("contracts") \
+        # Fetch transactions
+        transactions_response = self.client.table("transactions") \
             .select("*") \
             .order("processed_at", desc=True) \
             .limit(limit) \
             .execute()
 
         contracts = []
-        for contract in contracts_response.data:
-            # Fetch compliance flags for this contract
+        for transaction in transactions_response.data:
+            # Fetch compliance flags for this transaction
             flags_response = self.client.table("compliance_flags") \
                 .select("*") \
-                .eq("contract_id", contract["id"]) \
+                .eq("transaction_id", transaction["transaction_id"]) \
                 .execute()
 
-            # Restructure to match expected format
+            # Restructure to match expected format (using 'id' for frontend compatibility)
             contract_result = {
-                "id": contract["id"],
-                "processed_at": contract["processed_at"],
+                "id": transaction["transaction_id"],  # Map transaction_id to id for frontend
+                "processed_at": transaction["processed_at"],
                 "transaction_data": {
-                    "property_address": contract.get("property_address"),
-                    "buyer_name": contract.get("buyer_name"),
-                    "seller_name": contract.get("seller_name"),
-                    "purchase_price": float(contract["purchase_price"]) if contract.get("purchase_price") else None,
-                    "earnest_money_amount": float(contract["earnest_money_amount"]) if contract.get("earnest_money_amount") else None,
-                    "closing_date": contract.get("closing_date"),
-                    "extraction_confidence_score": float(contract.get("extraction_confidence_score", 0.0)),
+                    "property_address": transaction.get("property_address"),
+                    "buyer_name": transaction.get("buyer_name"),
+                    "seller_name": transaction.get("seller_name"),
+                    "purchase_price": float(transaction["purchase_price"]) if transaction.get("purchase_price") else None,
+                    "earnest_money_amount": float(transaction["earnest_money_amount"]) if transaction.get("earnest_money_amount") else None,
+                    "closing_date": transaction.get("closing_date"),
+                    "extraction_confidence_score": float(transaction.get("extraction_confidence_score", 0.0)),
+                    "tc_status": transaction.get("tc_status", "PENDING_REVIEW"),
                 },
-                "compliance_status": contract["compliance_status"],
+                "compliance_status": transaction["compliance_status"],
                 "compliance_flags": [
                     {
                         "check_id": flag["check_id"],
@@ -132,7 +140,7 @@ class SupabaseService:
                     }
                     for flag in flags_response.data
                 ],
-                "processing_time_ms": contract["processing_time_ms"],
+                "processing_time_ms": transaction["processing_time_ms"],
             }
             contracts.append(contract_result)
 
@@ -140,43 +148,44 @@ class SupabaseService:
 
     def get_contract_by_id(self, contract_id: str) -> Optional[Dict[str, Any]]:
         """
-        Get a specific contract by ID.
+        Get a specific transaction by ID.
 
         Args:
-            contract_id: The contract ID
+            contract_id: The transaction ID (UUID or string)
 
         Returns:
             Contract dictionary or None if not found
         """
-        response = self.client.table("contracts") \
+        response = self.client.table("transactions") \
             .select("*") \
-            .eq("id", contract_id) \
+            .eq("transaction_id", contract_id) \
             .execute()
 
         if not response.data:
             return None
 
-        contract = response.data[0]
+        transaction = response.data[0]
 
         # Fetch compliance flags
         flags_response = self.client.table("compliance_flags") \
             .select("*") \
-            .eq("contract_id", contract_id) \
+            .eq("transaction_id", contract_id) \
             .execute()
 
         return {
-            "id": contract["id"],
-            "processed_at": contract["processed_at"],
+            "id": transaction["transaction_id"],
+            "processed_at": transaction["processed_at"],
             "transaction_data": {
-                "property_address": contract.get("property_address"),
-                "buyer_name": contract.get("buyer_name"),
-                "seller_name": contract.get("seller_name"),
-                "purchase_price": float(contract["purchase_price"]) if contract.get("purchase_price") else None,
-                "earnest_money_amount": float(contract["earnest_money_amount"]) if contract.get("earnest_money_amount") else None,
-                "closing_date": contract.get("closing_date"),
-                "extraction_confidence_score": float(contract.get("extraction_confidence_score", 0.0)),
+                "property_address": transaction.get("property_address"),
+                "buyer_name": transaction.get("buyer_name"),
+                "seller_name": transaction.get("seller_name"),
+                "purchase_price": float(transaction["purchase_price"]) if transaction.get("purchase_price") else None,
+                "earnest_money_amount": float(transaction["earnest_money_amount"]) if transaction.get("earnest_money_amount") else None,
+                "closing_date": transaction.get("closing_date"),
+                "extraction_confidence_score": float(transaction.get("extraction_confidence_score", 0.0)),
+                "tc_status": transaction.get("tc_status", "PENDING_REVIEW"),
             },
-            "compliance_status": contract["compliance_status"],
+            "compliance_status": transaction["compliance_status"],
             "compliance_flags": [
                 {
                     "check_id": flag["check_id"],
@@ -186,7 +195,7 @@ class SupabaseService:
                 }
                 for flag in flags_response.data
             ],
-            "processing_time_ms": contract["processing_time_ms"],
+            "processing_time_ms": transaction["processing_time_ms"],
         }
 
     def get_dashboard_stats(self) -> Dict[str, Any]:
