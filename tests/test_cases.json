@@ -1,0 +1,138 @@
+{
+  "test_cases": [
+    {
+      "test_id": "TC-001",
+      "description": "Valid contract - all fields present, all compliance rules pass",
+      "contract_text": "REAL ESTATE PURCHASE AGREEMENT\n\nProperty Address: 456 Oak Avenue, Chicago, IL 60614\n\nThis agreement dated November 18, 2025 is made between:\nBuyer: Alice Johnson\nSeller: David Martinez\n\nPurchase Price: $425,000\nEarnest Money Deposit: $8,500 (2% of purchase price)\n\nKey Dates:\n- Inspection Deadline: December 5, 2025\n- Appraisal Contingency: December 12, 2025\n- Financing Contingency: December 20, 2025\n- Title Contingency: December 28, 2025\n- Closing Date: January 15, 2026\n\nAgents:\n- Listing Agent: Tom Wilson, Premier Realty\n- Buyer's Agent: Lisa Chen, HomeFirst Properties\n\nEscrow Company: Chicago Escrow Services\nTitle Company: North Shore Title Company",
+      "expected_status": "PASS",
+      "expected_flags": []
+    },
+    {
+      "test_id": "TC-002",
+      "description": "CC-001 CRITICAL: Missing required fields (buyer_name, seller_name)",
+      "contract_text": "REAL ESTATE PURCHASE AGREEMENT\n\nProperty Address: 789 Elm Street, Boston, MA 02101\n\nPurchase Price: $550,000\nEarnest Money Deposit: $11,000\n\nClosing Date: February 1, 2026\n\nInspection Deadline: December 10, 2025\nFinancing Contingency: December 20, 2025\n\nEscrow Company: Boston Escrow LLC",
+      "expected_status": "FAIL",
+      "expected_flags": [
+        {
+          "check_id": "CC-001",
+          "severity": "CRITICAL",
+          "description": "Required fields missing: buyer_name, seller_name"
+        }
+      ]
+    },
+    {
+      "test_id": "TC-003",
+      "description": "CC-002 WARNING: Earnest money below 1% of purchase price",
+      "contract_text": "REAL ESTATE PURCHASE AGREEMENT\n\nProperty Address: 321 Pine Road, Austin, TX 78701\n\nBuyer: Carlos Rodriguez\nSeller: Emily Thompson\n\nPurchase Price: $600,000\nEarnest Money Deposit: $3,000 (0.5% - below standard)\n\nKey Dates:\n- Inspection Deadline: December 8, 2025\n- Financing Contingency: December 18, 2025\n- Closing Date: January 30, 2026\n\nListing Agent: Mark Stevens, Austin Realty Group\nBuyer's Agent: Jennifer Lee, Texas Home Pros",
+      "expected_status": "WARNING",
+      "expected_flags": [
+        {
+          "check_id": "CC-002",
+          "severity": "WARNING",
+          "description": "Earnest money is 0.50% of purchase price (expected 1-3%)"
+        }
+      ]
+    },
+    {
+      "test_id": "TC-004",
+      "description": "CC-002 WARNING: Earnest money above 3% of purchase price",
+      "contract_text": "REAL ESTATE PURCHASE AGREEMENT\n\nProperty Address: 555 Maple Drive, Seattle, WA 98101\n\nBuyer: Michael Chang and Sarah Chang\nSeller: Robert Wilson, Patricia Wilson\n\nPurchase Price: $800,000\nEarnest Money Deposit: $40,000 (5% - above standard)\n\nKey Dates:\n- Inspection Deadline: December 1, 2025\n- Appraisal Contingency: December 10, 2025\n- Financing Contingency: December 15, 2025\n- Closing Date: January 20, 2026\n\nEscrow Company: Pacific Northwest Escrow\nTitle Company: Seattle Title Services",
+      "expected_status": "WARNING",
+      "expected_flags": [
+        {
+          "check_id": "CC-002",
+          "severity": "WARNING",
+          "description": "Earnest money is 5.00% of purchase price (expected 1-3%)"
+        }
+      ]
+    },
+    {
+      "test_id": "TC-005",
+      "description": "CC-003 CRITICAL: Closing date in the past",
+      "contract_text": "REAL ESTATE PURCHASE AGREEMENT\n\nProperty Address: 888 Cedar Lane, Miami, FL 33101\n\nBuyer: Jessica Martinez\nSeller: Andrew Brown\n\nPurchase Price: $375,000\nEarnest Money Deposit: $7,500\n\nKey Dates:\n- Inspection Deadline: 2024-10-15\n- Financing Contingency: 2024-11-01\n- Closing Date: 2024-11-15 (PAST DATE - INVALID)\n\nListing Agent: Diana Rodriguez, Miami Properties\nBuyer's Agent: Kevin Park, Sunshine Realty",
+      "expected_status": "FAIL",
+      "expected_flags": [
+        {
+          "check_id": "CC-003",
+          "severity": "CRITICAL",
+          "description": "Closing date 2024-11-15 is not in the future"
+        }
+      ]
+    },
+    {
+      "test_id": "TC-006",
+      "description": "CC-005 CRITICAL: Inspection deadline after closing date",
+      "contract_text": "REAL ESTATE PURCHASE AGREEMENT\n\nProperty Address: 999 Birch Court, Denver, CO 80201\n\nBuyer: Daniel Kim\nSeller: Laura Anderson\n\nPurchase Price: $500,000\nEarnest Money Deposit: $10,000\n\nKey Dates:\n- Closing Date: January 10, 2026\n- Inspection Deadline: January 15, 2026 (AFTER CLOSING - INVALID)\n- Financing Contingency: December 20, 2025\n\nTitle Company: Rocky Mountain Title",
+      "expected_status": "FAIL",
+      "expected_flags": [
+        {
+          "check_id": "CC-005",
+          "severity": "CRITICAL",
+          "description": "inspection_deadline (2026-01-15) is not before closing date (2026-01-10)"
+        }
+      ]
+    },
+    {
+      "test_id": "TC-007",
+      "description": "CC-005 CRITICAL: Financing contingency on closing date",
+      "contract_text": "REAL ESTATE PURCHASE AGREEMENT\n\nProperty Address: 777 Spruce Street, Portland, OR 97201\n\nBuyer: Samantha Lee, James Lee\nSeller: Christopher Davis\n\nPurchase Price: $650,000\nEarnest Money Deposit: $13,000\n\nKey Dates:\n- Inspection Deadline: December 5, 2025\n- Financing Contingency: January 25, 2026 (SAME AS CLOSING - INVALID)\n- Closing Date: January 25, 2026\n\nEscrow Company: Oregon Escrow Solutions",
+      "expected_status": "FAIL",
+      "expected_flags": [
+        {
+          "check_id": "CC-005",
+          "severity": "CRITICAL",
+          "description": "financing_contingency_date (2026-01-25) is not before closing date (2026-01-25)"
+        }
+      ]
+    },
+    {
+      "test_id": "TC-008",
+      "description": "CC-007 CRITICAL: Inspection deadline after financing contingency",
+      "contract_text": "REAL ESTATE PURCHASE AGREEMENT\n\nProperty Address: 222 Willow Way, Phoenix, AZ 85001\n\nBuyer: Nicole Brown\nSeller: Matthew Garcia\n\nPurchase Price: $425,000\nEarnest Money Deposit: $8,500\n\nKey Dates:\n- Financing Contingency: December 10, 2025\n- Inspection Deadline: December 15, 2025 (AFTER FINANCING - ILLOGICAL)\n- Closing Date: January 20, 2026\n\nListing Agent: Rachel Green, Desert Properties\nBuyer's Agent: Steven White, Arizona Home Finders",
+      "expected_status": "FAIL",
+      "expected_flags": [
+        {
+          "check_id": "CC-007",
+          "severity": "CRITICAL",
+          "description": "Inspection deadline should be before financing contingency"
+        }
+      ]
+    },
+    {
+      "test_id": "TC-009",
+      "description": "CC-007 CRITICAL: Appraisal contingency after financing contingency",
+      "contract_text": "REAL ESTATE PURCHASE AGREEMENT\n\nProperty Address: 444 Aspen Circle, San Diego, CA 92101\n\nBuyer: Ryan Miller\nSeller: Angela Taylor\n\nPurchase Price: $875,000\nEarnest Money Deposit: $17,500\n\nKey Dates:\n- Inspection Deadline: December 1, 2025\n- Financing Contingency: December 15, 2025\n- Appraisal Contingency: December 20, 2025 (AFTER FINANCING - ILLOGICAL)\n- Closing Date: January 30, 2026\n\nTitle Company: San Diego Title Services",
+      "expected_status": "FAIL",
+      "expected_flags": [
+        {
+          "check_id": "CC-007",
+          "severity": "CRITICAL",
+          "description": "Appraisal contingency should be before financing contingency"
+        }
+      ]
+    },
+    {
+      "test_id": "TC-010",
+      "description": "Multiple compliance failures - CC-001, CC-003, CC-005, CC-007",
+      "contract_text": "REAL ESTATE PURCHASE AGREEMENT\n\nProperty Address: 111 Cherry Boulevard, Nashville, TN 37201\n\n(MISSING BUYER AND SELLER NAMES)\n\nPurchase Price: $400,000\nEarnest Money Deposit: $8,000\n\nKey Dates:\n- Financing Contingency: December 5, 2025\n- Inspection Deadline: December 10, 2025 (AFTER FINANCING)\n- Closing Date: 2024-06-01 (PAST DATE)\n\nEscrow Company: Tennessee Escrow LLC",
+      "expected_status": "FAIL",
+      "expected_flags": [
+        {
+          "check_id": "CC-001",
+          "severity": "CRITICAL",
+          "description": "Required fields missing: buyer_name, seller_name"
+        },
+        {
+          "check_id": "CC-003",
+          "severity": "CRITICAL",
+          "description": "Closing date 2024-06-01 is not in the future"
+        },
+        {
+          "check_id": "CC-007",
+          "severity": "CRITICAL",
+          "description": "Inspection deadline should be before financing contingency"
+        }
+      ]
+    }
+  ]
+}
