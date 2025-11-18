@@ -66,3 +66,10 @@ samples/
 # Output
 output/
 results/
+
+# Node.js / Frontend
+node_modules/
+package-lock.json
+dashboard/frontend/node_modules/
+dashboard/frontend/package-lock.json
+dashboard/frontend/dist/
