@@ -3,6 +3,7 @@ Executive Dashboard API - FastAPI Backend
 Serves contract compliance data for the executive dashboard
 """
 
+import os
 import json
 import random
 from datetime import datetime, timedelta
@@ -12,6 +13,10 @@ from typing import List, Dict, Any, Optional
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
+from dotenv import load_dotenv
+
+# Load environment variables
+load_dotenv()
 
 
 # ============================================================================
@@ -306,8 +311,28 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# Initialize mock data service
-data_service = MockDataService()
+# Initialize data service (Supabase or Mock)
+def initialize_data_service():
+    """Initialize either Supabase or Mock data service based on environment variables."""
+    supabase_url = os.getenv("SUPABASE_URL")
+    supabase_key = os.getenv("SUPABASE_KEY")
+
+    if supabase_url and supabase_key:
+        print("🗄️  Connecting to Supabase database...")
+        try:
+            from supabase_service import SupabaseService
+            service = SupabaseService()
+            print("✅ Connected to Supabase successfully!")
+            return service
+        except Exception as e:
+            print(f"⚠️  Failed to connect to Supabase: {e}")
+            print("📦 Falling back to mock data service...")
+            return MockDataService()
+    else:
+        print("📦 Using mock data service (no Supabase credentials found)")
+        return MockDataService()
+
+data_service = initialize_data_service()
 
 
 # ============================================================================

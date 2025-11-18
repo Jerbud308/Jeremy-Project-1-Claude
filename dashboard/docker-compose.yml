@@ -12,6 +12,10 @@ services:
     working_dir: /app
     environment:
       - PYTHONUNBUFFERED=1
+      - SUPABASE_URL=${SUPABASE_URL}
+      - SUPABASE_KEY=${SUPABASE_KEY}
+    env_file:
+      - ./backend/.env
     restart: unless-stopped
     networks:
       - dashboard-network
