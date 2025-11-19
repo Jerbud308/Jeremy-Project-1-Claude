@@ -81,62 +81,78 @@ Enable users to upload contract documents (PDF, images, text files) directly thr
 │  (React + Vite) │
 └────────┬────────┘
          │
-         │ HTTP POST /api/upload
+         │ 1. Upload file via Supabase SDK
          ▼
 ┌─────────────────┐
-│  FastAPI Server │
-│  Upload Handler │
+│ Supabase Storage│
+│  (File Storage) │
 └────────┬────────┘
          │
-         ├──────────────────────────┐
-         │                          │
-         ▼                          ▼
-┌─────────────────┐          ┌─────────────────┐
-│ Supabase Storage│          │  n8n Webhook    │
-│  (File Storage) │          │  Trigger        │
-└─────────────────┘          └─────┬───────────┘
-         │                         │
-         │ file_url                │ POST
-         └──────────┬──────────────┘
-                    ▼
-            ┌───────────────────┐
-            │  n8n Workflow     │
-            │  (Orchestration)  │
-            └────────┬──────────┘
-                     │
-                     ├──────────────────┐
-                     ▼                  ▼
-            ┌──────────────┐    ┌──────────────────┐
-            │ OCR Service  │    │ Claude Compliance│
-            │ (if needed)  │    │      Agent       │
-            └──────┬───────┘    └──────┬───────────┘
-                   │                   │
-                   └─────────┬─────────┘
-                             ▼
-                     ┌──────────────────┐
-                     │  Supabase DB     │
-                     │  (Results)       │
-                     └──────────────────┘
+         │ 2. Get file URL
+         ▼
+┌─────────────────┐
+│   Frontend UI   │
+│  (React + Vite) │
+└────────┬────────┘
+         │
+         │ 3. POST to n8n webhook
+         ▼
+┌─────────────────┐
+│  n8n Webhook    │
+│  Trigger        │
+└─────┬───────────┘
+      │
+      ▼
+┌───────────────────┐
+│  n8n Workflow     │
+│  (Orchestration)  │
+└────────┬──────────┘
+         │
+         ├──────────────────┐
+         ▼                  ▼
+┌──────────────┐    ┌──────────────────┐
+│ OCR Service  │    │ Claude Compliance│
+│ (if needed)  │    │      Agent       │
+└──────┬───────┘    └──────┬───────────┘
+       │                   │
+       └─────────┬─────────┘
+                 ▼
+         ┌──────────────────┐
+         │  Supabase DB     │
+         │  (Results)       │
+         └──────────────────┘
 ```
 
 **n8n Webhook URL:** `https://jerbud.app.n8n.cloud/webhook/contract-upload`
 
+**Architecture Notes:**
+- No backend API server needed
+- Frontend uploads directly to Supabase Storage using Supabase JavaScript SDK
+- Frontend triggers n8n webhook with file metadata
+- n8n handles all processing and database writes
+
 ### 4.2 Data Flow
 
-1. **User uploads file(s)** → Frontend validates format/size
-2. **Frontend sends file(s)** → FastAPI receives via multipart/form-data
-3. **FastAPI validates** → Check MIME type, size, filename sanitization
-4. **Store original file** → Supabase Storage bucket (returns public/signed URL)
-5. **Create upload record** → Insert into `uploaded_files` table with status "queued"
-6. **Trigger n8n webhook** → POST to `https://jerbud.app.n8n.cloud/webhook/contract-upload` with:
+1. **User selects file(s)** → Frontend validates format/size client-side
+2. **Frontend uploads to Supabase** → Uses Supabase JS SDK `.upload()` method
+3. **Supabase stores file** → Returns public URL or signed URL
+4. **Frontend creates DB record** → Insert into `uploaded_files` table with status "queued"
+5. **Frontend triggers n8n webhook** → POST to `https://jerbud.app.n8n.cloud/webhook/contract-upload` with:
    - `file_url`: Supabase storage URL
-   - `file_id`: Database record ID
+   - `file_id`: Database record ID (UUID)
    - `filename`: Original filename
    - `mime_type`: File MIME type
-7. **n8n processes file** → Workflow handles OCR, Claude API, compliance validation
-8. **n8n writes results** → Updates `uploaded_files` status, creates `transactions` record
-9. **Frontend polls for updates** → GET `/api/upload/{upload_id}/status` every 2 seconds
-10. **Update UI** → Show new contract in dashboard table when status = "completed"
+   - `uploaded_by`: User email/ID (optional)
+6. **n8n processes file** → Workflow handles OCR, Claude API, compliance validation
+7. **n8n writes results** → Updates `uploaded_files` status, creates `transactions` record
+8. **Frontend polls Supabase** → Query `uploaded_files` table every 2 seconds for status
+9. **Update UI** → Show new contract in dashboard when status = "completed"
+
+**Key Benefits of Direct Upload:**
+- ✅ No backend server needed
+- ✅ Faster uploads (direct to Supabase CDN)
+- ✅ Simpler architecture
+- ✅ Better scalability
 
 ---
 
@@ -225,61 +241,105 @@ Add upload button to main dashboard header:
 
 ---
 
-## 6. Backend API Endpoints
+## 6. Frontend Integration Points
 
-### 6.1 Upload Endpoint
+### 6.1 Supabase Storage Upload (Frontend)
 
-**POST** `/api/upload`
+**Using Supabase JavaScript SDK:**
 
-**Request:**
-```
-Content-Type: multipart/form-data
+```typescript
+import { supabase } from './supabaseClient'
 
-files: File[] (1-5 files)
-user_id: string (optional, from auth)
-```
+async function uploadFile(file: File) {
+  // Validate file
+  if (file.size > 10 * 1024 * 1024) {
+    throw new Error('File exceeds 10 MB limit')
+  }
 
-**Response:**
-```json
-{
-  "success": true,
-  "upload_id": "upl_xyz123",
-  "files": [
-    {
-      "filename": "contract_123.pdf",
-      "file_id": "file_abc456",
-      "status": "queued",
-      "storage_url": "https://supabase.co/storage/..."
-    }
-  ]
+  // Generate unique file ID
+  const fileId = crypto.randomUUID()
+  const filePath = `${fileId}_${file.name}`
+
+  // Upload to Supabase Storage
+  const { data, error } = await supabase.storage
+    .from('contract-uploads')
+    .upload(filePath, file, {
+      cacheControl: '3600',
+      upsert: false
+    })
+
+  if (error) throw error
+
+  // Get public URL
+  const { data: urlData } = supabase.storage
+    .from('contract-uploads')
+    .getPublicUrl(filePath)
+
+  return {
+    fileId,
+    filename: file.name,
+    storageUrl: urlData.publicUrl,
+    mimeType: file.type,
+    sizeBytes: file.size
+  }
 }
 ```
 
-**Error Response:**
-```json
-{
-  "success": false,
-  "error": "FILE_TOO_LARGE",
-  "message": "File contract_123.pdf exceeds 10 MB limit",
-  "max_size_mb": 10
+### 6.2 Database Record Creation (Frontend)
+
+**Insert upload record:**
+
+```typescript
+async function createUploadRecord(fileInfo: any) {
+  const { data, error } = await supabase
+    .from('uploaded_files')
+    .insert({
+      file_id: fileInfo.fileId,
+      filename: fileInfo.filename,
+      original_filename: fileInfo.filename,
+      mime_type: fileInfo.mimeType,
+      file_size_bytes: fileInfo.sizeBytes,
+      storage_url: fileInfo.storageUrl,
+      status: 'queued',
+      uploaded_by: 'user@example.com' // From auth context
+    })
+    .select()
+    .single()
+
+  if (error) throw error
+  return data
 }
 ```
 
-### 6.2 n8n Webhook Trigger
+### 6.3 n8n Webhook Trigger (Frontend)
 
 **POST** `https://jerbud.app.n8n.cloud/webhook/contract-upload`
 
-**Payload sent by FastAPI:**
-```json
-{
-  "file_id": "file_abc456",
-  "upload_id": "upl_xyz123",
-  "filename": "contract_123.pdf",
-  "mime_type": "application/pdf",
-  "file_size_bytes": 2400000,
-  "storage_url": "https://zdbakftwcpfnpmwrrydy.supabase.co/storage/v1/object/public/contract-uploads/file_abc456.pdf",
-  "uploaded_by": "user@example.com",
-  "timestamp": "2025-11-19T10:30:00Z"
+**Trigger from Frontend:**
+
+```typescript
+async function triggerN8nProcessing(fileInfo: any) {
+  const response = await fetch('https://jerbud.app.n8n.cloud/webhook/contract-upload', {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify({
+      file_id: fileInfo.file_id,
+      filename: fileInfo.filename,
+      mime_type: fileInfo.mime_type,
+      file_size_bytes: fileInfo.file_size_bytes,
+      storage_url: fileInfo.storage_url,
+      uploaded_by: fileInfo.uploaded_by,
+      timestamp: new Date().toISOString()
+    })
+  })
+
+  if (!response.ok) {
+    throw new Error('Failed to trigger n8n workflow')
+  }
+
+  return await response.json()
 }
 ```
 
@@ -298,36 +358,66 @@ user_id: string (optional, from auth)
    - Link to `source_file_id`
 7. (Optional) Send notification/email if critical compliance issues found
 
-### 6.3 Processing Status Endpoint
+### 6.4 Poll for Processing Status (Frontend)
 
-**GET** `/api/upload/{upload_id}/status`
+**Query Supabase for status updates:**
 
-**Response:**
-```json
-{
-  "upload_id": "upl_xyz123",
-  "status": "processing",
-  "files": [
-    {
-      "file_id": "file_abc456",
-      "filename": "contract_123.pdf",
-      "status": "completed",
-      "transaction_id": "txn_789",
-      "compliance_status": "PASS",
-      "processing_time_ms": 2340
-    }
-  ]
+```typescript
+async function pollUploadStatus(fileId: string) {
+  const { data, error } = await supabase
+    .from('uploaded_files')
+    .select('status, transaction_id, error_message')
+    .eq('file_id', fileId)
+    .single()
+
+  if (error) throw error
+  return data
 }
+
+// Poll every 2 seconds
+const interval = setInterval(async () => {
+  const status = await pollUploadStatus(fileId)
+
+  if (status.status === 'completed') {
+    clearInterval(interval)
+    // Show success, fetch transaction details
+    fetchTransactionDetails(status.transaction_id)
+  } else if (status.status === 'failed') {
+    clearInterval(interval)
+    // Show error
+    showError(status.error_message)
+  }
+}, 2000)
 ```
 
-### 6.4 File Download Endpoint
+### 6.5 Real-time Updates with Supabase (Optional Enhancement)
 
-**GET** `/api/files/{file_id}/download`
+**Instead of polling, use Supabase Realtime:**
 
-**Response:**
-- Returns original file with appropriate Content-Type header
-- Requires authentication
-- Includes Content-Disposition header for download
+```typescript
+const channel = supabase
+  .channel('upload-status')
+  .on(
+    'postgres_changes',
+    {
+      event: 'UPDATE',
+      schema: 'public',
+      table: 'uploaded_files',
+      filter: `file_id=eq.${fileId}`
+    },
+    (payload) => {
+      const status = payload.new.status
+      if (status === 'completed') {
+        // Show success
+        fetchTransactionDetails(payload.new.transaction_id)
+      } else if (status === 'failed') {
+        // Show error
+        showError(payload.new.error_message)
+      }
+    }
+  )
+  .subscribe()
+```
 
 ---
 
@@ -583,81 +673,90 @@ Create test suite with:
 
 ### Phase 1: MVP (Week 1)
 
-**Backend (FastAPI):**
-- [ ] Create `/api/upload` endpoint
-- [ ] Implement file validation (MIME type, size)
-- [ ] Set up Supabase Storage bucket (`contract-uploads`)
-- [ ] Create `uploaded_files` table in Supabase
-- [ ] Implement n8n webhook trigger
-- [ ] Create `/api/upload/{upload_id}/status` endpoint
-- [ ] Add error handling and logging
+**Supabase Setup:**
+- [ ] Create `contract-uploads` storage bucket
+- [ ] Set up bucket policies (public read or authenticated access)
+- [ ] Create `uploaded_files` table in database
+- [ ] Add source_file_id column to `transactions` table
+- [ ] Enable Realtime on `uploaded_files` table (optional)
+
+**Frontend (React):**
+- [ ] Install react-dropzone and configure Supabase client
+- [ ] Create upload modal component
+- [ ] Implement drag-and-drop UI
+- [ ] Add client-side file validation (size, type)
+- [ ] Implement Supabase Storage upload function
+- [ ] Create database record after successful upload
+- [ ] Trigger n8n webhook with file metadata
+- [ ] Poll Supabase for status updates (or use Realtime)
+- [ ] Display upload progress and processing status
+- [ ] Show success/error notifications
+- [ ] Auto-refresh dashboard when processing completes
 
 **n8n Workflow:**
 - [ ] Create webhook trigger endpoint
-- [ ] Implement file download from Supabase Storage
+- [ ] Implement file download from Supabase Storage URL
 - [ ] Add PDF text extraction (pdfplumber or external service)
-- [ ] Integrate Claude Compliance Agent API call
-- [ ] Update `uploaded_files` table with results
+- [ ] Integrate Claude Compliance Agent
+- [ ] Parse compliance results
+- [ ] Update `uploaded_files` table with status and results
 - [ ] Insert transaction records into database
-- [ ] Add error handling and retry logic
-
-**Frontend:**
-- [ ] Create upload modal component with React
-- [ ] Implement drag-and-drop UI (react-dropzone)
-- [ ] Add file preview/validation
-- [ ] Show upload progress bar
-- [ ] Poll for processing status
-- [ ] Display success/error notifications
-- [ ] Auto-refresh dashboard when processing completes
+- [ ] Add error handling and update status to "failed" on errors
 
 **Testing:**
-- [ ] Unit tests for file validation
-- [ ] Integration test: upload → webhook → database
+- [ ] Test file upload to Supabase Storage
+- [ ] Test n8n webhook trigger
+- [ ] Integration test: upload → process → database
 - [ ] Manual testing with sample PDF contracts
 
 ### Phase 2: Enhancements (Week 2)
 
-**Backend:**
+**Frontend:**
 - [ ] Implement batch upload (5 files at once)
-- [ ] Add file history view endpoint
-- [ ] Create `/api/files/{file_id}/download` endpoint
-- [ ] Add duplicate file detection
+- [ ] Add file upload history page
+- [ ] Implement retry button for failed uploads
+- [ ] Show detailed processing logs/errors
+- [ ] Add download button for original files
+- [ ] Implement duplicate file detection
 
 **n8n Workflow:**
 - [ ] Add image OCR support (Tesseract or cloud OCR)
 - [ ] Implement retry mechanism for failed extractions
 - [ ] Add email notifications for CRITICAL compliance issues
 - [ ] Add Slack webhook for team notifications
+- [ ] Add processing time metrics
 
-**Frontend:**
-- [ ] Add WebSocket for real-time updates (replace polling)
-- [ ] Create file upload history page
-- [ ] Add retry button for failed uploads
-- [ ] Show detailed processing logs
+**Supabase:**
+- [ ] Replace polling with Realtime subscriptions
+- [ ] Add file retention policy (auto-delete after 90 days)
 
 ### Phase 3: Advanced Features (Future)
 
-**Backend:**
-- [ ] DOCX support in n8n workflow
-- [ ] Virus scanning integration (ClamAV)
-- [ ] File compression before storage
-- [ ] Bulk export functionality
-
 **Frontend:**
 - [ ] Mobile-optimized upload UI
-- [ ] Batch operations (delete, re-process)
+- [ ] Batch operations (delete multiple, re-process)
 - [ ] Upload analytics dashboard
+- [ ] Drag-and-drop anywhere on page
+
+**n8n Workflow:**
+- [ ] DOCX support
+- [ ] Multi-page TIFF support
+- [ ] Virus scanning integration
+- [ ] File compression before storage
+
+**Supabase:**
+- [ ] CDN optimization for faster downloads
+- [ ] Automatic image thumbnail generation
 
 ---
 
 ## 13. Dependencies
 
-### Backend Python Packages (FastAPI)
+### Frontend Packages (React)
 ```bash
-pip install python-multipart  # FastAPI file uploads
-pip install python-magic  # MIME type detection (optional)
-pip install httpx  # For triggering n8n webhook
-# Note: Supabase client already installed from existing project
+npm install react-dropzone        # Drag-and-drop file upload UI
+npm install @supabase/supabase-js # Supabase client (already installed)
+# Note: lucide-react already installed for icons
 ```
 
 ### n8n Workflow Dependencies
@@ -667,38 +766,59 @@ pip install httpx  # For triggering n8n webhook
   - Self-hosted Tesseract container
   - PDF extraction service OR pdfplumber Python script
 
-### Frontend Packages
-```bash
-npm install react-dropzone  # Drag-and-drop UI
-npm install axios  # File upload with progress
-npm install lucide-react  # Upload icons (already installed)
-```
+### Supabase Configuration
+- Storage bucket: `contract-uploads`
+- Tables: `uploaded_files`, `transactions`
+- Realtime enabled on `uploaded_files` (optional for Phase 2)
 
 ---
 
 ## 14. Configuration
 
-### Environment Variables
+### Frontend Environment Variables (.env)
 
 ```bash
+# Supabase Configuration (already configured)
+VITE_SUPABASE_URL=https://zdbakftwcpfnpmwrrydy.supabase.co
+VITE_SUPABASE_ANON_KEY=your-anon-key-here
+
 # File Upload Configuration
-MAX_FILE_SIZE_MB=10
-MAX_BATCH_FILES=5
-MAX_BATCH_SIZE_MB=25
-ALLOWED_MIME_TYPES=application/pdf,image/jpeg,image/png,text/plain
+VITE_MAX_FILE_SIZE_MB=10
+VITE_MAX_BATCH_FILES=5
+VITE_ALLOWED_MIME_TYPES=application/pdf,image/jpeg,image/png,text/plain
 
 # n8n Webhook Integration
-N8N_WEBHOOK_URL=https://jerbud.app.n8n.cloud/webhook/contract-upload
-N8N_WEBHOOK_TIMEOUT=10
+VITE_N8N_WEBHOOK_URL=https://jerbud.app.n8n.cloud/webhook/contract-upload
 
-# Supabase Storage
-SUPABASE_STORAGE_BUCKET=contract-uploads
-FILE_RETENTION_DAYS=90
+# Storage
+VITE_SUPABASE_STORAGE_BUCKET=contract-uploads
 
-# Processing
-UPLOAD_PROCESSING_TIMEOUT=60
-MAX_RETRY_ATTEMPTS=3
-STATUS_POLL_INTERVAL_MS=2000
+# Polling Configuration
+VITE_STATUS_POLL_INTERVAL_MS=2000
+VITE_MAX_POLL_ATTEMPTS=150  # 5 minutes max (150 * 2s)
+```
+
+### Supabase Storage Bucket Configuration
+
+**Bucket Settings:**
+- Name: `contract-uploads`
+- Public: `false` (files accessible via signed URLs)
+- File size limit: 10 MB
+- Allowed MIME types: PDF, JPEG, PNG, TXT
+
+**Bucket Policies:**
+```sql
+-- Allow authenticated users to upload
+CREATE POLICY "Allow authenticated uploads"
+ON storage.objects FOR INSERT
+TO authenticated
+WITH CHECK (bucket_id = 'contract-uploads');
+
+-- Allow authenticated users to read their own files
+CREATE POLICY "Allow authenticated reads"
+ON storage.objects FOR SELECT
+TO authenticated
+USING (bucket_id = 'contract-uploads');
 ```
 
 ---
