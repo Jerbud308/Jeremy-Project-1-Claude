@@ -9,8 +9,10 @@ import {
   AlertCircle,
   Building2,
   Activity,
-  BarChart3
+  BarChart3,
+  Upload
 } from 'lucide-react'
+import { UploadModal } from './components/UploadModal'
 import {
   PieChart,
   Pie,
@@ -335,6 +337,7 @@ function App() {
   const [contracts, setContracts] = useState<ContractResult[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
+  const [isUploadModalOpen, setIsUploadModalOpen] = useState(false)
 
   useEffect(() => {
     async function loadData() {
@@ -412,7 +415,14 @@ function App() {
                 </p>
               </div>
             </div>
-            <div className="flex items-center gap-3">
+            <div className="flex items-center gap-4">
+              <button
+                onClick={() => setIsUploadModalOpen(true)}
+                className="px-4 py-2 bg-gradient-to-r from-blue-600 to-purple-600 text-white rounded-lg font-medium hover:shadow-lg transition-all flex items-center gap-2"
+              >
+                <Upload className="w-4 h-4" />
+                Upload Contracts
+              </button>
               <div className="text-right">
                 <p className="text-xs text-muted-foreground">Last Updated</p>
                 <p className="text-sm font-semibold text-foreground">
@@ -505,6 +515,22 @@ function App() {
           </Card>
         </div>
       </main>
+
+      {/* Upload Modal */}
+      <UploadModal
+        isOpen={isUploadModalOpen}
+        onClose={() => setIsUploadModalOpen(false)}
+        onUploadComplete={async () => {
+          // Refresh dashboard data after upload
+          const [statsData, contractsData] = await Promise.all([
+            fetchStats(),
+            fetchContracts()
+          ])
+          setStats(statsData)
+          setContracts(contractsData)
+          setIsUploadModalOpen(false)
+        }}
+      />
     </div>
   )
 }
